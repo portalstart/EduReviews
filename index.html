@@ -370,31 +370,26 @@
         }
 
         function renderSingleReviewHTML(schoolId, reviewId, r) {
-            return `<div class="fb-comment ${r.isAnonymous ? 'anonymous' : ''}"><div class="fb-comment-wrapper">
+            return `<div class="fb-comment ${r.isAnonymous ? 'anonymous' : ''}" id="review-${reviewId}"><div class="fb-comment-wrapper">
                 <div class="fb-comment-avatar ${r.isAnonymous ? 'anonymous' : ''}">${r.isAnonymous ? '<i class="fas fa-user-secret"></i>' : r.authorName.charAt(0).toUpperCase()}</div>
-                <div class="fb-comment-content">
-                    <div class="fb-comment-bubble"><div class="fb-comment-header"><span class="fb-comment-author">${r.authorName}</span><span class="fb-comment-badge ${r.isAnonymous ? 'anonymous' : r.authorType}">${r.isAnonymous ? 'Anónimo' : r.authorType}</span></div><div class="fb-comment-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div><p class="fb-comment-text">${r.comment.replace(/\n/g, '<br>')}</p>${r.recommendStudy || r.recommendWork ? `<div class="fb-comment-recommend">${r.recommendStudy ? '<i class="fas fa-check"></i> Recomienda estudiar ' : ''}${r.recommendWork ? '<i class="fas fa-check"></i> Recomienda trabajar' : ''}</div>` : ''}</div>
-                    <div class="fb-comment-meta">
-                        <span class="fb-comment-date"><i class="far fa-clock"></i> ${r.createdAt.toDate().toLocaleDateString()}</span>
-                        <span class="fb-comment-action ${currentUser && r.likedBy.includes(currentUser.uid) ? 'liked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', true)"><i class="fas fa-thumbs-up"></i> ${r.likes || 'Me gusta'}</span>
-                        <span class="fb-comment-action ${currentUser && r.dislikedBy.includes(currentUser.uid) ? 'disliked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', false)"><i class="fas fa-thumbs-down"></i> ${r.dislikes || ''}</span>
-                        <span class="fb-comment-action" onclick="window.toggleReplyForm('${reviewId}')"><i class="fas fa-reply"></i> Responder</span>
+                <div class="fb-comment-content"><div class="fb-comment-bubble"><div class="fb-comment-header"><span class="fb-comment-author">${r.authorName}</span><span class="fb-comment-badge ${r.isAnonymous ? 'anonymous' : r.authorType}">${r.isAnonymous ? 'Anónimo' : r.authorType}</span></div><div class="fb-comment-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div><p class="fb-comment-text">${r.comment.replace(/\n/g, '<br>')}</p>${r.recommendStudy || r.recommendWork ? `<div class="fb-comment-recommend">${r.recommendStudy ? '<i class="fas fa-check"></i> Recomienda estudiar ' : ''}${r.recommendWork ? '<i class="fas fa-check"></i> Recomienda trabajar' : ''}</div>` : ''}</div>
+                <div class="fb-comment-meta">
+                    <span class="fb-comment-date"><i class="far fa-clock"></i> ${r.createdAt.toDate().toLocaleDateString()}</span>
+                    <span class="fb-comment-action ${currentUser && r.likedBy.includes(currentUser.uid) ? 'liked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', true)"><i class="fas fa-thumbs-up"></i> ${r.likes || 'Me gusta'}</span>
+                    <span class="fb-comment-action ${currentUser && r.dislikedBy.includes(currentUser.uid) ? 'disliked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', false)"><i class="fas fa-thumbs-down"></i> ${r.dislikes || ''}</span>
+                    <span class="fb-comment-action" onclick="window.toggleReplyForm('${reviewId}')"><i class="fas fa-reply"></i> Responder</span>
+                </div>
+                <div class="fb-replies" id="repliesContainer-${reviewId}"></div>
+                <div class="fb-reply-form" id="replyForm-${reviewId}">
+                    <textarea id="replyText-${reviewId}" placeholder="Escribe una respuesta..."></textarea>
+                    <div class="fb-reply-form-buttons">
+                        <button class="fb-btn-small secondary" onclick="window.cancelReply('${reviewId}')">Cancelar</button>
+                        <button class="fb-btn-small primary" onclick="window.submitReply('${schoolId}', '${reviewId}')"><i class="fas fa-paper-plane"></i> Enviar</button>
                     </div>
-                    <div id="repliesContainer-${reviewId}"></div>
-                    <div class="fb-reply-form" id="replyForm-${reviewId}">
-                        <textarea id="replyText-${reviewId}" placeholder="Escribe una respuesta..."></textarea>
-                        <div class="fb-reply-form-buttons">
-                            <button class="fb-btn-small secondary" onclick="window.cancelReply('${reviewId}')">Cancelar</button>
-                            <button class="fb-btn-small primary" onclick="window.submitReply('${schoolId}', '${reviewId}')"><i class="fas fa-paper-plane"></i> Enviar</button>
-                        </div>
-                    </div>
+                </div>
                 </div></div></div>`;
         }
-
-        function renderSingleReplyHTML(replyData) {
-            return `<div class="fb-reply"><div class="fb-reply-avatar">${replyData.authorName.charAt(0).toUpperCase()}</div><div class="fb-reply-content"><div class="fb-reply-bubble"><div class="fb-reply-author">${replyData.authorName}</div><p class="fb-reply-text">${replyData.text.replace(/\n/g, '<br>')}</p></div><div class="fb-reply-date">${replyData.createdAt.toDate().toLocaleDateString()}</div></div></div>`;
-        }
-
+        
         function createRatingsChart(schoolId, reviewDocs) {
             const canvasId = `ratingsChart-${schoolId}`;
             const ctx = document.getElementById(canvasId);
@@ -412,7 +407,7 @@
             if (activeCharts[canvasId]) activeCharts[canvasId].destroy();
             let totalLikes = 0, totalDislikes = 0;
             reviewDocs.forEach(doc => { totalLikes += doc.data().likes || 0; totalDislikes += doc.data().dislikes || 0; });
-            activeCharts[canvasId] = new Chart(ctx.getContext('2d'), { type: 'doughnut', data: { labels: ['Likes', 'Dislikes'], datasets: [{ data: [totalLikes > 0 ? totalLikes : 0, totalDislikes > 0 ? totalDislikes : 0], backgroundColor: ['#1877f2', '#dc3545'], borderWidth: 0 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
+            activeCharts[canvasId] = new Chart(ctx.getContext('2d'), { type: 'doughnut', data: { labels: ['Likes', 'Dislikes'], datasets: [{ data: [totalLikes > 0 ? totalLikes : 0.01, totalDislikes > 0 ? totalDislikes : 0.01], backgroundColor: ['#1877f2', '#dc3545'], borderWidth: 0 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
         }
 
         async function handleSearch(term) {

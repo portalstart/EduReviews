@@ -230,6 +230,7 @@
         const db = getFirestore(app);
 
         let currentUser = null, currentUserProfile = null, currentRating = 0, selectedSchool = null, unsubscribeSchools, searchTimeout;
+        let activeCharts = {};
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -285,11 +286,7 @@
         }
 
         function initFormAndSearchEvents() {
-            document.querySelectorAll('.fb-star').forEach(star => star.addEventListener('click', function() {
-                currentRating = parseInt(this.dataset.rating);
-                document.getElementById('rating').value = currentRating;
-                document.querySelectorAll('.fb-star').forEach((s, i) => s.classList.toggle('active', i < currentRating));
-            }));
+            document.querySelectorAll('.fb-star').forEach(star => star.addEventListener('click', function() { currentRating = parseInt(this.dataset.rating); document.getElementById('rating').value = currentRating; document.querySelectorAll('.fb-star').forEach((s, i) => s.classList.toggle('active', i < currentRating)); }));
             document.getElementById('reviewForm').addEventListener('submit', handleReviewSubmit);
             document.getElementById('searchInput').addEventListener('input', e => { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => handleSearch(e.target.value.trim()), 300); });
             document.addEventListener('click', e => { if (!e.target.closest('.fb-search')) document.getElementById('searchDropdown').classList.remove('show'); });
@@ -302,7 +299,6 @@
             const rating = parseInt(document.getElementById('rating').value);
             const comment = document.getElementById('comment').value.trim();
             if (!schoolName || !location || !rating) return showAlert('Completa nombre, ubicación y calificación.', 'error');
-
             try {
                 let schoolId = selectedSchool ? selectedSchool.id : null;
                 if (!schoolId) {
@@ -313,19 +309,17 @@
                         schoolId = newSchoolDoc.id;
                     } else { schoolId = snap.docs[0].id; }
                 }
-
-                await runTransaction(db, async (transaction) => {
+                await runTransaction(db, async (t) => {
                     const schoolRef = doc(db, "schools", schoolId);
-                    const schoolDoc = await transaction.get(schoolRef);
+                    const schoolDoc = await t.get(schoolRef);
                     if (!schoolDoc.exists()) throw "El colegio no existe.";
                     const { totalReviews = 0, ratingSum = 0 } = schoolDoc.data();
                     const newTotalReviews = totalReviews + 1;
                     const newRatingSum = ratingSum + rating;
-                    transaction.update(schoolRef, { totalReviews: newTotalReviews, ratingSum: newRatingSum, avgRating: newRatingSum / newTotalReviews });
+                    t.update(schoolRef, { totalReviews: newTotalReviews, ratingSum: newRatingSum, avgRating: newRatingSum / newTotalReviews });
                     const newReviewRef = doc(collection(db, `schools/${schoolId}/reviews`));
-                    transaction.set(newReviewRef, { authorId: currentUser.uid, authorName: document.getElementById('postAnonymous').checked ? 'Usuario Anónimo' : currentUser.displayName, authorType: currentUserProfile.userType, rating, comment, recommendStudy: document.getElementById('recommendStudy').checked, recommendWork: document.getElementById('recommendWork').checked, isAnonymous: document.getElementById('postAnonymous').checked, createdAt: Timestamp.now(), likes: 0, dislikes: 0, likedBy: [], dislikedBy: [] });
+                    t.set(newReviewRef, { authorId: currentUser.uid, authorName: document.getElementById('postAnonymous').checked ? 'Usuario Anónimo' : currentUser.displayName, authorType: currentUserProfile.userType, rating, comment, recommendStudy: document.getElementById('recommendStudy').checked, recommendWork: document.getElementById('recommendWork').checked, isAnonymous: document.getElementById('postAnonymous').checked, createdAt: Timestamp.now(), likes: 0, dislikes: 0, likedBy: [], dislikedBy: [] });
                 });
-
                 showAlert('Reseña publicada con éxito.', 'success');
                 document.getElementById('reviewForm').reset();
                 currentRating = 0; document.querySelectorAll('.fb-star').forEach(s => s.classList.remove('active'));
@@ -347,22 +341,43 @@
             postEl.className = 'fb-post';
             postEl.innerHTML = `
                 <div class="fb-post-header"><div><h3>${schoolData.name}</h3><div class="fb-post-school-location"><i class="fas fa-map-marker-alt"></i> ${schoolData.location}</div></div><div class="fb-post-rating"><div class="fb-post-rating-number">${(schoolData.avgRating || 0).toFixed(1)}</div><div class="fb-post-rating-stars">${'★'.repeat(Math.round(schoolData.avgRating || 0))}${'☆'.repeat(5 - Math.round(schoolData.avgRating || 0))}</div></div></div>
-                <div class="fb-stats"><div class="fb-stat-box"><div class="fb-stat-number">${schoolData.totalReviews || 0}</div><div class="fb-stat-label">Reseñas</div></div></div>
+                <div class="fb-charts"><div class="fb-chart-box"><h4><i class="fas fa-chart-bar"></i> Distribución de Calificaciones</h4><canvas id="ratingsChart-${schoolId}"></canvas></div><div class="fb-chart-box"><h4><i class="fas fa-thumbs-up"></i> Likes vs Dislikes</h4><canvas id="likesChart-${schoolId}"></canvas></div></div>
                 <div class="fb-comments-section"><div id="comments-for-${schoolId}">Cargando...</div></div>`;
             document.getElementById('reviewsList').appendChild(postEl);
             const commentsContainer = document.getElementById(`comments-for-${schoolId}`);
             const reviewsQuery = query(collection(db, `schools/${schoolId}/reviews`), orderBy("createdAt", "desc"));
             onSnapshot(reviewsQuery, reviewsSnap => {
-                commentsContainer.innerHTML = reviewsSnap.empty ? '<p style="text-align:center;color:var(--text-secondary);">Sin opiniones para este colegio.</p>' :
-                    reviewsSnap.docs.map(reviewDoc => renderSingleReviewHTML(schoolId, reviewDoc.id, reviewDoc.data())).join('');
+                commentsContainer.innerHTML = reviewsSnap.empty ? '<p style="text-align:center;color:var(--text-secondary);">Sin opiniones para este colegio.</p>' : reviewsSnap.docs.map(reviewDoc => renderSingleReviewHTML(schoolId, reviewDoc.id, reviewDoc.data())).join('');
+                createRatingsChart(schoolId, reviewsSnap.docs);
+                createLikesChart(schoolId, reviewsSnap.docs);
             });
         }
 
         function renderSingleReviewHTML(schoolId, reviewId, r) {
             return `<div class="fb-comment ${r.isAnonymous ? 'anonymous' : ''}"><div class="fb-comment-wrapper">
                 <div class="fb-comment-avatar ${r.isAnonymous ? 'anonymous' : ''}">${r.isAnonymous ? '<i class="fas fa-user-secret"></i>' : r.authorName.charAt(0).toUpperCase()}</div>
-                <div class="fb-comment-content"><div class="fb-comment-bubble"><div class="fb-comment-header"><span class="fb-comment-author">${r.authorName}</span><span class="fb-comment-badge ${r.isAnonymous ? 'anonymous' : r.authorType}">${r.isAnonymous ? 'Anónimo' : r.authorType}</span></div><div class="fb-comment-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div><p class="fb-comment-text">${r.comment}</p>${r.recommendStudy || r.recommendWork ? `<div class="fb-comment-recommend">${r.recommendStudy ? '<i class="fas fa-check"></i> Recomienda estudiar ' : ''}${r.recommendWork ? '<i class="fas fa-check"></i> Recomienda trabajar' : ''}</div>` : ''}</div>
+                <div class="fb-comment-content"><div class="fb-comment-bubble"><div class="fb-comment-header"><span class="fb-comment-author">${r.authorName}</span><span class="fb-comment-badge ${r.isAnonymous ? 'anonymous' : r.authorType}">${r.isAnonymous ? 'Anónimo' : r.authorType}</span></div><div class="fb-comment-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div><p class="fb-comment-text">${r.comment.replace(/\n/g, '<br>')}</p>${r.recommendStudy || r.recommendWork ? `<div class="fb-comment-recommend">${r.recommendStudy ? '<i class="fas fa-check"></i> Recomienda estudiar ' : ''}${r.recommendWork ? '<i class="fas fa-check"></i> Recomienda trabajar' : ''}</div>` : ''}</div>
                 <div class="fb-comment-meta"><span class="fb-comment-date"><i class="far fa-clock"></i> ${r.createdAt.toDate().toLocaleDateString()}</span><span class="fb-comment-action ${currentUser && r.likedBy.includes(currentUser.uid) ? 'liked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', true)"><i class="fas fa-thumbs-up"></i> ${r.likes || 'Me gusta'}</span><span class="fb-comment-action ${currentUser && r.dislikedBy.includes(currentUser.uid) ? 'disliked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', false)"><i class="fas fa-thumbs-down"></i> ${r.dislikes || ''}</span></div></div></div></div>`;
+        }
+
+        function createRatingsChart(schoolId, reviewDocs) {
+            const canvasId = `ratingsChart-${schoolId}`;
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return;
+            if (activeCharts[canvasId]) activeCharts[canvasId].destroy();
+            const ratingCounts = [0, 0, 0, 0, 0];
+            reviewDocs.forEach(doc => ratingCounts[(doc.data().rating - 1)]++);
+            activeCharts[canvasId] = new Chart(ctx.getContext('2d'), { type: 'bar', data: { labels: ['1★', '2★', '3★', '4★', '5★'], datasets: [{ data: ratingCounts, backgroundColor: ['#dc3545', '#fd7e14', '#ffc107', '#28a745', '#1877f2'], borderRadius: 6 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } } });
+        }
+
+        function createLikesChart(schoolId, reviewDocs) {
+            const canvasId = `likesChart-${schoolId}`;
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return;
+            if (activeCharts[canvasId]) activeCharts[canvasId].destroy();
+            let totalLikes = 0, totalDislikes = 0;
+            reviewDocs.forEach(doc => { totalLikes += doc.data().likes || 0; totalDislikes += doc.data().dislikes || 0; });
+            activeCharts[canvasId] = new Chart(ctx.getContext('2d'), { type: 'doughnut', data: { labels: ['Likes', 'Dislikes'], datasets: [{ data: [totalLikes, totalDislikes], backgroundColor: ['#1877f2', '#dc3545'], borderWidth: 0 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
         }
 
         async function handleSearch(term) {
@@ -379,7 +394,7 @@
         window.switchTab = (tab) => { document.querySelectorAll('.fb-tabs .fb-tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.fb-modal-body .fb-tab-content').forEach(c => c.classList.remove('active')); document.querySelector(`.fb-tab-btn[onclick="window.switchTab('${tab}')"]`).classList.add('active'); document.getElementById(`${tab}Tab`).classList.add('active'); };
         window.checkIfNewSchool = () => { clearTimeout(searchTimeout); searchTimeout = setTimeout(async () => { if(selectedSchool) return; const name = document.getElementById('schoolName').value.trim(); document.querySelector('.fb-school-info-box').classList.toggle('show', name.length > 2); }, 500); };
         window.selectSchoolFromSearch = (s) => { selectedSchool = s; document.getElementById('schoolName').value = s.name; document.getElementById('location').value = s.location; document.getElementById('schoolName').readOnly = true; document.getElementById('location').readOnly = true; const badge = document.getElementById('school-badge'); badge.innerHTML = `<span><i class="fas fa-check-circle"></i> ${s.name}</span><button type="button" onclick="window.clearSelectedSchool(event)">Cambiar</button>`; badge.classList.add('show'); document.getElementById('searchDropdown').classList.remove('show'); document.querySelector('.fb-school-info-box').classList.remove('show'); };
-        window.clearSelectedSchool = (e) => { e.stopPropagation(); selectedSchool = null; document.getElementById('schoolName').value = ''; document.getElementById('location').value = ''; document.getElementById('schoolName').readOnly = false; document.getElementById('location').readOnly = false; document.getElementById('school-badge').classList.remove('show'); };
+        window.clearSelectedSchool = (e) => { if(e) e.stopPropagation(); selectedSchool = null; document.getElementById('schoolName').value = ''; document.getElementById('location').value = ''; document.getElementById('schoolName').readOnly = false; document.getElementById('location').readOnly = false; document.getElementById('school-badge').classList.remove('show'); };
         window.toggleLike = async (schoolId, reviewId, isLike) => {
             if (!currentUser) return showAlert('Debes iniciar sesión para votar.', 'error');
             const reviewRef = doc(db, `schools/${schoolId}/reviews/${reviewId}`);
@@ -392,11 +407,7 @@
             });
         };
 
-        window.showAdminPanel = () => {
-            if (!isAdmin()) return; if (unsubscribeSchools) unsubscribeSchools();
-            document.getElementById('mainContainer').innerHTML = `<div style="grid-column: 1/-1;"><div class="admin-panel"><div class="admin-panel-header"><i class="fas fa-shield-alt"></i><div><h2>Panel de Administración</h2></div></div><div class="admin-tabs"><button class="admin-tab-btn active" onclick="window.switchAdminTab('schools')"><i class="fas fa-school"></i> Colegios</button><button class="admin-tab-btn" onclick="window.switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button><button class="admin-tab-btn" onclick="showMainApp()"><i class="fas fa-arrow-left"></i> Volver</button></div><div id="adminSchoolsTab" class="admin-tab-content active"><div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Nombre</th><th>Ubicación</th><th>Reseñas</th><th>Acciones</th></tr></thead><tbody id="schoolsTableBody"></tbody></table></div></div><div id="adminUsersTab" class="admin-tab-content"><div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Nombre</th><th>Email</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody id="usersTableBody"></tbody></table></div></div></div></div>`;
-            renderSchoolsTable(); renderUsersTable();
-        };
+        window.showAdminPanel = () => { if (!isAdmin()) return; if (unsubscribeSchools) unsubscribeSchools(); document.getElementById('mainContainer').innerHTML = `<div style="grid-column: 1/-1;"><div class="admin-panel"><div class="admin-panel-header"><i class="fas fa-shield-alt"></i><div><h2>Panel de Administración</h2></div></div><div class="admin-tabs"><button class="admin-tab-btn active" onclick="window.switchAdminTab('schools')"><i class="fas fa-school"></i> Colegios</button><button class="admin-tab-btn" onclick="window.switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button><button class="admin-tab-btn" onclick="showMainApp()"><i class="fas fa-arrow-left"></i> Volver</button></div><div id="adminSchoolsTab" class="admin-tab-content active"><div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Nombre</th><th>Ubicación</th><th>Reseñas</th><th>Acciones</th></tr></thead><tbody id="schoolsTableBody"></tbody></table></div></div><div id="adminUsersTab" class="admin-tab-content"><div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Nombre</th><th>Email</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody id="usersTableBody"></tbody></table></div></div></div></div>`; renderSchoolsTable(); renderUsersTable(); };
         window.switchAdminTab = (tab) => { document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active')); document.querySelector(`.admin-tab-btn[onclick*="'${tab}'"]`).classList.add('active'); document.getElementById(`admin${tab.charAt(0).toUpperCase() + tab.slice(1)}Tab`).classList.add('active'); };
         async function renderSchoolsTable() { const tbody = document.getElementById('schoolsTableBody'); tbody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>'; const snap = await getDocs(query(collection(db, "schools"), orderBy("name"))); tbody.innerHTML = snap.empty ? '<tr><td colspan="4">No hay colegios.</td></tr>' : snap.docs.map(d => { const s = { id: d.id, ...d.data() }; return `<tr><td><strong>${s.name}</strong></td><td>${s.location}</td><td>${s.totalReviews || 0}</td><td><button class="admin-action-btn delete" onclick="window.deleteSchool('${s.id}', '${s.name}')"><i class="fas fa-trash"></i></button></td></tr>`; }).join(''); }
         async function renderUsersTable() { const tbody = document.getElementById('usersTableBody'); tbody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>'; const snap = await getDocs(query(collection(db, "users"), orderBy("name"))); tbody.innerHTML = snap.empty ? '<tr><td colspan="4">No hay usuarios.</td></tr>' : snap.docs.map(d => { const u = { id: d.id, ...d.data() }; return `<tr><td><strong>${u.name}</strong></td><td>${u.email}</td><td><span class="admin-badge ${u.userType}">${u.userType}</span></td><td>${u.userType !== 'admin' ? `<button class="admin-action-btn edit" onclick="window.editUser('${u.id}')"><i class="fas fa-edit"></i></button><button class="admin-action-btn delete" onclick="window.deleteUser('${u.id}', '${u.name}')"><i class="fas fa-trash"></i></button>` : '<span>Protegido</span>'}</td></tr>`; }).join(''); }
@@ -404,7 +415,6 @@
         window.deleteUser = async (id, name) => { if (!confirm(`¿Eliminar a "${name}"?`)) return; try { await deleteDoc(doc(db, "users", id)); showAlert('Usuario eliminado.', 'success'); renderUsersTable(); } catch (e) { showAlert('Error al eliminar.', 'error'); } };
         window.editUser = async (userId) => { const userDoc = await getDoc(doc(db, "users", userId)); if (!userDoc.exists()) return showAlert('Usuario no encontrado', 'error'); const user = userDoc.data(); document.getElementById('editUserId').value = userId; document.getElementById('editUserName').value = user.name; document.getElementById('editUserEmail').value = user.email; document.getElementById('editUserType').value = user.userType; document.getElementById('editUserModal').style.display = 'block'; };
         
-        // SOLUCIÓN: Lógica de login/registro restaurada y verificada
         document.getElementById('loginForm').addEventListener('submit', async (e) => { e.preventDefault(); const email = document.getElementById('loginEmail').value, password = document.getElementById('loginPassword').value; try { await signInWithEmailAndPassword(auth, email, password); closeAuthModal(); showAlert('¡Bienvenido de nuevo!', 'success'); } catch (error) { showAlert(getAuthErrorMessage(error.code), 'error'); } });
         document.getElementById('registerForm').addEventListener('submit', async (e) => { e.preventDefault(); const name = document.getElementById('registerName').value, email = document.getElementById('registerEmail').value, password = document.getElementById('registerPassword').value, userType = document.getElementById('registerUserType').value; if (password.length < 6 || !userType) { showAlert('Revisa la contraseña y el tipo de usuario.', 'error'); return; } try { const cred = await createUserWithEmailAndPassword(auth, email, password); await updateProfile(cred.user, { displayName: name }); await setDoc(doc(db, "users", cred.user.uid), { name, email, userType, joinDate: Timestamp.now() }); closeAuthModal(); showAlert('¡Cuenta creada con éxito!', 'success'); } catch (error) { showAlert(getAuthErrorMessage(error.code), 'error'); } });
         document.getElementById('editUserForm').addEventListener('submit', async (e) => { e.preventDefault(); const userId = document.getElementById('editUserId').value; const updatedData = { name: document.getElementById('editUserName').value, userType: document.getElementById('editUserType').value }; try { await updateDoc(doc(db, "users", userId), updatedData); showAlert('Usuario actualizado', 'success'); document.getElementById('editUserModal').style.display = 'none'; renderUsersTable(); } catch (error) { showAlert('Error al actualizar', 'error'); } });

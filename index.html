@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1601,6 +1603,27 @@
         </div>
     </div>
 
+
+    <script type="module">
+      // Import the functions you need from the SDKs you need
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+      // TODO: Add SDKs for Firebase products that you want to use
+      // https://firebase.google.com/docs/web/setup#available-libraries
+
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyD_w8r-6bRIxvEYttQGWS-Erv31drOW6Qk",
+        authDomain: "edureviews-74207.firebaseapp.com",
+        projectId: "edureviews-74207",
+        storageBucket: "edureviews-74207.firebasestorage.app",
+        messagingSenderId: "619855463365",
+        appId: "1:619855463365:web:9312f664ea6c90214a81ac"
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+    </script>
+
     <script>
         // ==================== VARIABLES GLOBALES ====================
         let currentUser = null;
@@ -2802,6 +2825,8 @@
                 }
             });
         }
+
+
 
         function loadSampleData() {
             if (Object.keys(schools).length === 0) {

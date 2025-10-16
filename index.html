@@ -1657,15 +1657,19 @@
             }
         }
 
-        function checkAuth() {
-            const savedUser = localStorage.getItem('currentUser');
-            if (savedUser) {
-                currentUser = JSON.parse(savedUser);
-                showMainApp();
-            } else {
-                showLoginPrompt();
-            }
-        }
+        // 🔹 Nueva versión con Firebase Auth
+                  function checkAuth() {
+                    onAuthStateChanged(auth, (user) => {
+                      if (user) {
+                        currentUser = user;
+                        showMainApp();
+                      } else {
+                        currentUser = null;
+                        showLoginPrompt();
+                      }
+                    });
+                  }
+
 
         function isAdmin() {
             return currentUser && currentUser.userType === 'admin';
@@ -1758,7 +1762,7 @@
             };
 
             // Login
-            document.getElementById('loginForm').addEventListener('submit', function(e) {
+          /*  document.getElementById('loginForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 const email = document.getElementById('loginEmail').value;
                 const password = document.getElementById('loginPassword').value;
@@ -1774,10 +1778,38 @@
                 } else {
                     showAlert('Email o contraseña incorrectos', 'error');
                 }
-            });
+            });*/
+
+            // 🔹 LOGIN CON FIREBASE AUTH
+                  document.getElementById('loginForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+
+                    const email = document.getElementById('loginEmail').value;
+                    const password = document.getElementById('loginPassword').value;
+
+                    try {
+                        // Iniciar sesión con Firebase
+                      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                      const user = userCredential.user;
+
+                      currentUser = {
+                        uid: user.uid,
+                        email: user.email
+                      };
+
+                      closeAuthModal();
+                      showMainApp();
+                      showAlert(`¡Bienvenido de nuevo ${user.email}!`, 'success');
+
+                    } catch (error) {
+                      console.error(error);
+                      showAlert('Email o contraseña incorrectos', 'error');
+                    }
+                  });
+
 
             // Registro
-            document.getElementById('registerForm').addEventListener('submit', function(e) {
+          /*  document.getElementById('registerForm').addEventListener('submit', function(e) {
                 e.preventDefault();
                 const name = document.getElementById('registerName').value;
                 const email = document.getElementById('registerEmail').value;
@@ -1814,7 +1846,56 @@
                 showAlert('¡Cuenta creada exitosamente!', 'success');
 
                 this.reset();
-            });
+            });*/
+
+
+            // 🔹 REGISTRO CON FIREBASE AUTH + FIRESTORE
+                  document.getElementById('registerForm').addEventListener('submit', async function(e) {
+                    e.preventDefault();
+
+                    const name = document.getElementById('registerName').value;
+                    const email = document.getElementById('registerEmail').value;
+                    const password = document.getElementById('registerPassword').value;
+                    const userType = document.getElementById('registerUserType').value;
+
+                    if (password.length < 6) {
+                      showAlert('La contraseña debe tener al menos 6 caracteres', 'error');
+                      return;
+                    }
+
+                    try {
+                      // 1️⃣ Crear el usuario en Firebase Authentication
+                      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                      const user = userCredential.user;
+
+                      // 2️⃣ Guardar información adicional en Firestore
+                      await addDoc(collection(db, "users"), {
+                        uid: user.uid,
+                        name,
+                        email,
+                        userType,
+                        joinDate: new Date().toLocaleDateString('es-ES')
+                      });
+
+                      // 3️⃣ Guardar sesión activa
+                      currentUser = user;
+
+                      // 4️⃣ Cerrar modal y mostrar aplicación principal
+                      closeAuthModal();
+                      showMainApp();
+                      showAlert('¡Cuenta creada exitosamente!', 'success');
+                      this.reset();
+
+                    } catch (error) {
+                      console.error(error);
+                      if (error.code === 'auth/email-already-in-use') {
+                        showAlert('Este email ya está registrado', 'error');
+                      } else {
+                        showAlert('Error al crear la cuenta: ' + error.message, 'error');
+                      }
+                    }
+                  });
+
 
             // Búsqueda
             let searchTimeout;
@@ -2196,13 +2277,20 @@
             }
         }
 
-        function logout() {
-            localStorage.removeItem('currentUser');
-            currentUser = null;
-            selectedSchool = null;
-            showLoginPrompt();
-            showAlert('Sesión cerrada correctamente', 'success');
-        }
+        // 🔹 LOGOUT CON FIREBASE AUTH
+                  function logout() {
+                    signOut(auth)
+                      .then(() => {
+                        currentUser = null;
+                        selectedSchool = null;
+                        showLoginPrompt();
+                        showAlert('Sesión cerrada correctamente', 'success');
+                      })
+                      .catch((error) => {
+                        console.error('Error al cerrar sesión:', error);
+                        showAlert('Hubo un error al cerrar sesión', 'error');
+                      });
+                  }
 
         function showAlert(message, type) {
             const alertDiv = document.createElement('div');
@@ -2399,12 +2487,154 @@
                     replies: []
                 };
 
-                schools[schoolKey].reviews.unshift(review);
+              /*  schools[schoolKey].reviews.unshift(review);
                 schools[schoolKey].stats.totalReviews++;
                 if (recommendStudy) schools[schoolKey].stats.recommendStudy++;
                 if (recommendWork) schools[schoolKey].stats.recommendWork++;
 
-                localStorage.setItem('schools', JSON.stringify(schools));
+                localStorage.setItem('schools', JSON.stringify(schools));*/
+
+
+                // 🔹 Guardar reseña en Firestore
+                        try {
+                          const schoolRef = doc(db, "schools", schoolKey);
+
+                          await updateDoc(schoolRef, {
+                            reviews: arrayUnion({
+                              id: Date.now(),
+                              user: currentUser?.email || 'Anónimo',
+                              comment: document.getElementById('comment').value,
+                              rating: currentRating,
+                              recommendStudy,
+                              recommendWork,
+                              likes: 0,
+                              dislikes: 0,
+                              replies: [],
+                              date: new Date().toLocaleDateString('es-ES')
+                            }),
+                            'stats.totalReviews': increment(1),
+                            'stats.recommendStudy': recommendStudy ? increment(1) : increment(0),
+                            'stats.recommendWork': recommendWork ? increment(1) : increment(0)
+                          });
+
+
+                          import { collection, getDocs, doc, getDoc }
+                            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+                            // 🔹 Cargar reseñas directamente desde Firestore
+                            async function renderReviewsFromFirestore() {
+                            const container = document.getElementById('reviewsList');
+                            container.innerHTML = '';
+
+                            const querySnapshot = await getDocs(collection(db, "schools"));
+                            if (querySnapshot.empty) {
+                            container.innerHTML = `
+                            <div class="fb-post">
+                              <div class="fb-empty-state">
+                                <i class="fas fa-comments"></i>
+                                <h3>No hay reseñas todavía</h3>
+                                <p>Sé el primero en compartir tu experiencia</p>
+                              </div>
+                            </div>
+                            `;
+                            return;
+                            }
+
+                            querySnapshot.forEach((schoolDoc) => {
+                            const school = { id: schoolDoc.id, ...schoolDoc.data() };
+                            const filteredReviews = filterReviews(school.reviews || []);
+
+                            if (filteredReviews.length === 0) return;
+
+                            const avgRating = (school.reviews.reduce((sum, r) => sum + r.rating, 0) / school.reviews.length).toFixed(1);
+                            const studyPercent = ((school.stats.recommendStudy / school.stats.totalReviews) * 100).toFixed(0);
+                            const workPercent = ((school.stats.recommendWork / school.stats.totalReviews) * 100).toFixed(0);
+
+                            const postCard = document.createElement('div');
+                            postCard.className = 'fb-post';
+                            postCard.innerHTML = `
+                            <div class="fb-post-header">
+                              <div class="fb-post-school-info">
+                                <h3>${school.name}</h3>
+                                <div class="fb-post-school-location">
+                                  <i class="fas fa-map-marker-alt"></i> ${school.location}
+                                </div>
+                              </div>
+                              <div class="fb-post-rating">
+                                <div class="fb-post-rating-number">${avgRating}</div>
+                                <div class="fb-post-rating-stars">${'★'.repeat(Math.round(avgRating))}</div>
+                              </div>
+                            </div>
+
+                            <div class="fb-contact-section">
+                              <div class="fb-contact-items">
+                                <div class="fb-contact-item">
+                                  <i class="fas fa-map-marker-alt"></i>
+                                  <span>${school.address}</span>
+                                </div>
+                                ${school.phone ? `
+                                  <div class="fb-contact-item">
+                                    <i class="fas fa-phone"></i>
+                                    <a href="tel:${school.phone}">${school.phone}</a>
+                                  </div>` : ''}
+                                ${school.email ? `
+                                  <div class="fb-contact-item">
+                                    <i class="fas fa-envelope"></i>
+                                    <a href="mailto:${school.email}">${school.email}</a>
+                                  </div>` : ''}
+                              </div>
+                            </div>
+
+                            <div class="fb-stats">
+                              <div class="fb-stat-box">
+                                <div class="fb-stat-number">${school.stats.totalReviews}</div>
+                                <div class="fb-stat-label">Reseñas</div>
+                              </div>
+                              <div class="fb-stat-box">
+                                <div class="fb-stat-number">${studyPercent}%</div>
+                                <div class="fb-stat-label">Recomiendan estudiar</div>
+                              </div>
+                              <div class="fb-stat-box">
+                                <div class="fb-stat-number">${workPercent}%</div>
+                                <div class="fb-stat-label">Recomiendan trabajar</div>
+                              </div>
+                            </div>
+
+                            <div class="fb-comments-section">
+                              <h3 class="fb-comments-header">
+                                <i class="fas fa-comments"></i> Opiniones (${filteredReviews.length})
+                              </h3>
+                              ${filteredReviews.map(review => renderReview(review)).join('')}
+                            </div>
+                            `;
+
+                            container.appendChild(postCard);
+                            });
+                            }
+
+
+                          // Limpieza del formulario
+                          document.getElementById('comment').value = '';
+                          document.getElementById('recommendStudy').checked = false;
+                          document.getElementById('recommendWork').checked = false;
+                          document.getElementById('postAnonymous').checked = false;
+                          currentRating = 0;
+                          updateStars();
+
+                          if (!selectedSchool) {
+                            this.reset();
+                            clearSelectedSchool();
+                          }
+
+                          showAlert('¡Reseña publicada exitosamente!', 'success');
+                          renderReviewsFromFirestore();
+
+                        } catch (error) {
+                          console.error('Error al guardar reseña:', error);
+                          showAlert('Error al publicar reseña', 'error');
+                        }
+
+
 
                 document.getElementById('comment').value = '';
                 document.getElementById('recommendStudy').checked = false;
@@ -2457,7 +2687,7 @@
             }
         }
 
-        function submitReply(reviewId) {
+      /*  function submitReply(reviewId) {
             const textarea = document.getElementById(`replyText-${reviewId}`);
             const replyText = textarea.value.trim();
 
@@ -2496,7 +2726,49 @@
                 form.classList.remove('show');
                 form.querySelector('textarea').value = '';
             }
-        }
+        }*/
+
+
+
+
+        async function submitReply(reviewId, schoolId) {
+              const textarea = document.getElementById(`replyText-${reviewId}`);
+              const replyText = textarea.value.trim();
+
+              if (!replyText) {
+              showAlert('Por favor escribe un comentario', 'error');
+              return;
+              }
+
+              const reply = {
+              id: Date.now(),
+              userName: currentUser?.email || 'Anónimo',
+              text: replyText,
+              date: new Date().toLocaleDateString('es-ES')
+              };
+
+              try {
+              const schoolRef = doc(db, "schools", schoolId);
+              const schoolSnap = await getDoc(schoolRef);
+              const schoolData = schoolSnap.data();
+              const reviews = schoolData.reviews || [];
+
+              // Encuentra la reseña y agrega la respuesta
+              const reviewIndex = reviews.findIndex(r => r.id === reviewId);
+              if (reviewIndex !== -1) {
+                if (!reviews[reviewIndex].replies) reviews[reviewIndex].replies = [];
+                reviews[reviewIndex].replies.push(reply);
+
+                await updateDoc(schoolRef, { reviews });
+                showAlert('Comentario agregado', 'success');
+                renderReviewsFromFirestore();
+              }
+              } catch (error) {
+              console.error(error);
+              showAlert('Error al agregar respuesta', 'error');
+              }
+              }
+
 
         function toggleReplies(reviewId) {
             const repliesSection = document.getElementById(`replies-${reviewId}`);

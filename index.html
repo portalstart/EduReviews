@@ -222,7 +222,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, getDoc, getDocs, setDoc, onSnapshot, query, where, orderBy, updateDoc, deleteDoc, Timestamp, runTransaction, increment, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, addDoc, getDoc, getDocs, setDoc, onSnapshot, query, where, orderBy, updateDoc, deleteDoc, Timestamp,runTransaction, increment, arrayUnion, arrayRemove, startAt, endAt }
+            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyD_w8r-6bRIxvEYttQGWS-Erv31drOW6Qk", authDomain: "edureviews-74207.firebaseapp.com", projectId: "edureviews-74207", storageBucket: "edureviews-74207.firebasestorage.app", messagingSenderId: "619855463365", appId: "1:619855463365:web:9312f664ea6c90214a81ac" };
         const app = initializeApp(firebaseConfig);
@@ -652,6 +653,7 @@ window.submitReply = async (schoolId, reviewId) => {
     </script>
 </body>
 </html>
+
 
 
 

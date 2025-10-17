@@ -462,6 +462,7 @@
         }
 
         // --- Buscar colegios por nombre (versión mejorada e insensible a mayúsculas) ---
+// --- Buscar colegios por nombre o ubicación (versión final insensible a mayúsculas/tildes) ---
 async function handleSearch(term) {
     const dropdown = document.getElementById('searchDropdown');
     if (!term || term.length < 2) {
@@ -471,27 +472,21 @@ async function handleSearch(term) {
     }
 
     try {
-        // Normalizar texto (quita tildes, convierte a minúsculas)
         const normalizeText = (txt) =>
             txt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
         const termNormalized = normalizeText(term);
-        const termCapitalized = term.charAt(0).toUpperCase() + term.slice(1);
 
-        // Buscar por nombre (Firestore requiere orderBy + rango)
-        const q = query(
-            collection(db, "schools"),
-            orderBy("name"),
-            startAt(termCapitalized),
-            endAt(termCapitalized + '\uf8ff')
-        );
-
+        // Obtener todos los colegios (ordenados)
+        const q = query(collection(db, "schools"), orderBy("name"));
         const snap = await getDocs(q);
 
-        // Filtrado adicional local (por insensibilidad a mayúsculas/tildes)
+        // Filtrar resultados localmente
         const results = snap.docs.filter(doc => {
-            const nameNorm = normalizeText(doc.data().name || '');
-            return nameNorm.includes(termNormalized);
+            const data = doc.data();
+            const nameNorm = normalizeText(data.name || '');
+            const locationNorm = normalizeText(data.location || '');
+            return nameNorm.includes(termNormalized) || locationNorm.includes(termNormalized);
         });
 
         if (results.length === 0) {
@@ -522,6 +517,7 @@ async function handleSearch(term) {
         dropdown.classList.add('show');
     }
 }
+
 
 
         window.logout = () => signOut(auth).catch(console.error);
@@ -653,6 +649,7 @@ window.submitReply = async (schoolId, reviewId) => {
     </script>
 </body>
 </html>
+
 
 
 

@@ -674,7 +674,18 @@ window.submitReply = async (schoolId, reviewId) => {
         window.deleteSchool = async (id, name) => { if (!confirm(`¿Eliminar "${name}"?`)) return; try { await deleteDoc(doc(db, "schools", id)); showAlert('Colegio eliminado.', 'success'); renderSchoolsTable(); } catch (e) { showAlert('Error al eliminar.', 'error'); } };
         window.deleteUser = async (id, name) => { if (!confirm(`¿Eliminar a "${name}"?`)) return; try { await deleteDoc(doc(db, "users", id)); showAlert('Usuario eliminado.', 'success'); renderUsersTable(); } catch (e) { showAlert('Error al eliminar.', 'error'); } };
         window.editUser = async (userId) => { const userDoc = await getDoc(doc(db, "users", userId)); if (!userDoc.exists()) return showAlert('Usuario no encontrado', 'error'); const user = userDoc.data(); document.getElementById('editUserId').value = userId; document.getElementById('editUserName').value = user.name; document.getElementById('editUserEmail').value = user.email; document.getElementById('editUserType').value = user.userType; document.getElementById('editUserModal').style.display = 'block'; };
-        
+            // --- Volver al contenido principal desde el Panel de Administración ---
+                    window.showMainApp = () => {
+                        const mainContainer = document.getElementById('mainContainer');
+                        if (!mainContainer) return;
+                    
+                        // Limpia el contenido del contenedor
+                        mainContainer.innerHTML = '';
+                    
+                        // Reconstruye la vista principal llamando a tu función de renderizado
+                        renderReviews(); // 🔹 Muestra la lista de colegios y reseñas
+                    };
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => { e.preventDefault(); const email = document.getElementById('loginEmail').value, password = document.getElementById('loginPassword').value; try { await signInWithEmailAndPassword(auth, email, password); closeAuthModal(); showAlert('¡Bienvenido de nuevo!', 'success'); } catch (error) { showAlert(getAuthErrorMessage(error.code), 'error'); } });
         document.getElementById('registerForm').addEventListener('submit', async (e) => { e.preventDefault(); const name = document.getElementById('registerName').value, email = document.getElementById('registerEmail').value, password = document.getElementById('registerPassword').value, userType = document.getElementById('registerUserType').value; if (password.length < 6 || !userType) { showAlert('Revisa la contraseña y el tipo de usuario.', 'error'); return; } try { const cred = await createUserWithEmailAndPassword(auth, email, password); await updateProfile(cred.user, { displayName: name }); await setDoc(doc(db, "users", cred.user.uid), { name, email, userType, joinDate: Timestamp.now() }); closeAuthModal(); showAlert('¡Cuenta creada con éxito!', 'success'); } catch (error) { showAlert(getAuthErrorMessage(error.code), 'error'); } });
         document.getElementById('editUserForm').addEventListener('submit', async (e) => { e.preventDefault(); const userId = document.getElementById('editUserId').value; const updatedData = { name: document.getElementById('editUserName').value, userType: document.getElementById('editUserType').value }; try { await updateDoc(doc(db, "users", userId), updatedData); showAlert('Usuario actualizado', 'success'); document.getElementById('editUserModal').style.display = 'none'; renderUsersTable(); } catch (error) { showAlert('Error al actualizar', 'error'); } });
@@ -694,6 +705,7 @@ window.submitReply = async (schoolId, reviewId) => {
     </script>
 </body>
 </html>
+
 
 
 

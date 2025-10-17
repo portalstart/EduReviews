@@ -463,34 +463,56 @@
 
         // --- Buscar colegios por nombre (versión mejorada e insensible a mayúsculas) ---
 // --- Buscar colegios por nombre o ubicación (versión final insensible a mayúsculas/tildes) ---
+// --- Buscar colegios por nombre o ubicación (versión final con opción "Ver todos") ---
 async function handleSearch(term) {
     const dropdown = document.getElementById('searchDropdown');
-    if (!term || term.length < 2) {
-        dropdown.classList.remove('show');
-        dropdown.innerHTML = '';
+    const normalizeText = (txt) =>
+        txt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+    // Si el campo está vacío, mostrar la opción "Ver todos los colegios"
+    if (!term) {
+        dropdown.innerHTML = `
+            <div class="fb-search-result fb-search-all"
+                 onclick="window.showAllSchools()">
+                <i class="fas fa-list"></i> Ver todos los colegios
+            </div>`;
+        dropdown.classList.add('show');
+        return;
+    }
+
+    // Si se escribió menos de 2 caracteres, mostrar opción también
+    if (term.length < 2) {
+        dropdown.innerHTML = `
+            <div class="fb-search-result fb-search-all"
+                 onclick="window.showAllSchools()">
+                <i class="fas fa-list"></i> Ver todos los colegios
+            </div>`;
+        dropdown.classList.add('show');
         return;
     }
 
     try {
-        const normalizeText = (txt) =>
-            txt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-
         const termNormalized = normalizeText(term);
 
-        // Obtener todos los colegios ordenados por nombre
-            const q = query(collection(db, "schools"), orderBy("name"));
-            const snap = await getDocs(q);
+        // Obtener todos los colegios (ordenados)
+        const q = query(collection(db, "schools"), orderBy("name"));
+        const snap = await getDocs(q);
 
-        // Filtrar localmente ignorando mayúsculas/tildes
-            const results = snap.docs.filter(doc => {
-                const data = doc.data();
-                const nameNorm = normalizeText(data.name || '');
-                const locationNorm = normalizeText(data.location || '');
-                return nameNorm.includes(termNormalized) || locationNorm.includes(termNormalized);
-            });
+        // Filtrar resultados localmente
+        const results = snap.docs.filter(doc => {
+            const data = doc.data();
+            const nameNorm = normalizeText(data.name || '');
+            const locationNorm = normalizeText(data.location || '');
+            return nameNorm.includes(termNormalized) || locationNorm.includes(termNormalized);
+        });
 
         if (results.length === 0) {
-            dropdown.innerHTML = `<div class="fb-search-no-results">No se encontraron colegios</div>`;
+            dropdown.innerHTML = `
+                <div class="fb-search-no-results">No se encontraron colegios</div>
+                <div class="fb-search-result fb-search-all"
+                     onclick="window.showAllSchools()">
+                    <i class="fas fa-list"></i> Ver todos los colegios
+                </div>`;
         } else {
             dropdown.innerHTML = results
                 .map(doc => {
@@ -507,7 +529,11 @@ async function handleSearch(term) {
                             </div>
                         </div>`;
                 })
-                .join('');
+                .join('') + `
+                <div class="fb-search-result fb-search-all"
+                     onclick="window.showAllSchools()">
+                    <i class="fas fa-list"></i> Ver todos los colegios
+                </div>`;
         }
 
         dropdown.classList.add('show');
@@ -649,6 +675,7 @@ window.submitReply = async (schoolId, reviewId) => {
     </script>
 </body>
 </html>
+
 
 
 

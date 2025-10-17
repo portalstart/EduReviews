@@ -476,28 +476,71 @@
         window.selectSchoolFromSearch = (s) => { selectedSchool = s; document.getElementById('schoolName').value = s.name; document.getElementById('location').value = s.location; document.getElementById('schoolName').readOnly = true; document.getElementById('location').readOnly = true; const badge = document.getElementById('school-badge'); badge.innerHTML = `<span><i class="fas fa-check-circle"></i> ${s.name}</span><button type="button" onclick="window.clearSelectedSchool(event)">Cambiar</button>`; badge.classList.add('show'); document.getElementById('searchDropdown').classList.remove('show'); document.querySelector('.fb-school-info-box').classList.remove('show'); renderReviews(s.id); };
         window.clearSelectedSchool = (e, force = false) => { if(e) e.stopPropagation(); selectedSchool = null; document.getElementById('schoolName').value = ''; document.getElementById('location').value = ''; document.getElementById('schoolName').readOnly = false; document.getElementById('location').readOnly = false; document.getElementById('school-badge').classList.remove('show'); if (force) renderReviews(); };
         window.toggleLike = async (schoolId, reviewId, isLike) => {
-            if (!currentUser) return showAlert('Debes iniciar sesión para votar.', 'error');
-            const reviewRef = doc(db, `schools/${schoolId}/reviews/${reviewId}`);
-            await runTransaction(db, async (t) => {
-                const reviewDoc = await t.get(reviewRef); if (!reviewDoc.exists()) return;
-                const data = reviewDoc.data(); const liked = data.likedBy.includes(currentUser.uid); const disliked = data.dislikedBy.includes(currentUser.uid);
-                if (isLike) { t.update(reviewRef, { likedBy: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid), likes: increment(liked ? -1 : 1), dislikedBy: disliked ? arrayRemove(currentUser.uid) : data.dislikedBy, dislikes: disliked ? increment(-1) : data.dislikes }); }
-                else { t.update(reviewRef, { dislikedBy: disliked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid), dislikes: increment(disliked ? -1 : 1), likedBy: liked ? arrayRemove(currentUser.uid) : data.likedBy, likes: liked ? increment(-1) : data.likes }); }
-            });
-        };
-        window.toggleReplyForm = (reviewId) => { const form = document.getElementById(`replyForm-${reviewId}`); form.classList.toggle('show'); if(form.classList.contains('show')) form.querySelector('textarea').focus(); };
-        window.cancelReply = (reviewId) => { const form = document.getElementById(`replyForm-${reviewId}`); form.classList.remove('show'); form.querySelector('textarea').value = ''; };
-        window.submitReply = async (schoolId, reviewId) => {
-            if (!currentUser) return showAlert('Inicia sesión para responder.', 'error');
-            const textarea = document.getElementById(`replyText-${reviewId}`);
-            const text = textarea.value.trim();
-            if (!text) return showAlert('Escribe una respuesta.', 'error');
-            const replyData = { text, authorId: currentUser.uid, authorName: currentUser.displayName, createdAt: Timestamp.now() };
-            try {
-                await addDoc(collection(db, 'schools', schoolId, 'reviews', reviewId, 'replies'), replyData);
-                window.cancelReply(reviewId);
-            } catch (e) { console.error(e); showAlert('No se pudo enviar la respuesta.', 'error'); }
-        };
+    if (!currentUser) return showAlert('Debes iniciar sesión para votar.', 'error');
+
+    const reviewRef = doc(db, `schools/${schoolId}/reviews/${reviewId}`);
+    try {
+        await runTransaction(db, async (t) => {
+            const reviewSnap = await t.get(reviewRef);
+            if (!reviewSnap.exists()) return;
+
+            const data = reviewSnap.data() || {};
+            const uid = currentUser.uid;
+
+            const likedBy = Array.isArray(data.likedBy) ? data.likedBy : [];
+            const dislikedBy = Array.isArray(data.dislikedBy) ? data.dislikedBy : [];
+            const likesCount = typeof data.likes === 'number' ? data.likes : 0;
+            const dislikesCount = typeof data.dislikes === 'number' ? data.dislikes : 0;
+
+            const hasLiked = likedBy.includes(uid);
+            const hasDisliked = dislikedBy.includes(uid);
+
+            // Construimos objeto de updates según caso
+            const updates = {};
+
+            if (isLike) {
+                if (hasLiked) {
+                    // Quitar like (deshacer)
+                    updates.likedBy = arrayRemove(uid);
+                    updates.likes = increment(-1);
+                } else {
+                    // Agregar like
+                    updates.likedBy = arrayUnion(uid);
+                    updates.likes = increment(1);
+                    // Si tenía dislike, quitarlo
+                    if (hasDisliked) {
+                        updates.dislikedBy = arrayRemove(uid);
+                        updates.dislikes = increment(-1);
+                    }
+                }
+            } else { // is dislike
+                if (hasDisliked) {
+                    // Quitar dislike (deshacer)
+                    updates.dislikedBy = arrayRemove(uid);
+                    updates.dislikes = increment(-1);
+                } else {
+                    // Agregar dislike
+                    updates.dislikedBy = arrayUnion(uid);
+                    updates.dislikes = increment(1);
+                    // Si tenía like, quitarlo
+                    if (hasLiked) {
+                        updates.likedBy = arrayRemove(uid);
+                        updates.likes = increment(-1);
+                    }
+                }
+            }
+
+            // Aplicar update solo si hay cambios
+            if (Object.keys(updates).length > 0) {
+                t.update(reviewRef, updates);
+            }
+        });
+    } catch (err) {
+        console.error("Error toggleLike:", err);
+        showAlert('No se pudo procesar el voto. Intenta de nuevo.', 'error');
+    }
+};
+
 
         window.showAdminPanel = () => { if (!isAdmin()) return; if (unsubscribeSchools) unsubscribeSchools(); document.getElementById('mainContainer').innerHTML = `<div style="grid-column: 1/-1;"><div class="admin-panel"><div class="admin-panel-header"><i class="fas fa-shield-alt"></i><div><h2>Panel de Administración</h2></div></div><div class="admin-tabs"><button class="admin-tab-btn active" onclick="window.switchAdminTab('schools')"><i class="fas fa-school"></i> Colegios</button><button class="admin-tab-btn" onclick="window.switchAdminTab('users')"><i class="fas fa-users"></i> Usuarios</button><button class="admin-tab-btn" onclick="showMainApp()"><i class="fas fa-arrow-left"></i> Volver</button></div><div id="adminSchoolsTab" class="admin-tab-content active"><div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Nombre</th><th>Ubicación</th><th>Reseñas</th><th>Acciones</th></tr></thead><tbody id="schoolsTableBody"></tbody></table></div></div><div id="adminUsersTab" class="admin-tab-content"><div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Nombre</th><th>Email</th><th>Tipo</th><th>Acciones</th></tr></thead><tbody id="usersTableBody"></tbody></table></div></div></div></div>`; renderSchoolsTable(); renderUsersTable(); };
         window.switchAdminTab = (tab) => { document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active')); document.querySelector(`.admin-tab-btn[onclick*="'${tab}'"]`).classList.add('active'); document.getElementById(`admin${tab.charAt(0).toUpperCase() + tab.slice(1)}Tab`).classList.add('active'); };
@@ -518,4 +561,5 @@
     </script>
 </body>
 </html>
+
 

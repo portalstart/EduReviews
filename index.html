@@ -686,6 +686,15 @@ window.submitReply = async (schoolId, reviewId) => {
                         renderReviews(); // 🔹 Muestra la lista de colegios y reseñas
                     };
 
+
+                    mainContainer.classList.add('fade-out');
+                        setTimeout(() => {
+                            mainContainer.innerHTML = '';
+                            renderReviews();
+                            mainContainer.classList.remove('fade-out');
+                        }, 300);
+
+        
         document.getElementById('loginForm').addEventListener('submit', async (e) => { e.preventDefault(); const email = document.getElementById('loginEmail').value, password = document.getElementById('loginPassword').value; try { await signInWithEmailAndPassword(auth, email, password); closeAuthModal(); showAlert('¡Bienvenido de nuevo!', 'success'); } catch (error) { showAlert(getAuthErrorMessage(error.code), 'error'); } });
         document.getElementById('registerForm').addEventListener('submit', async (e) => { e.preventDefault(); const name = document.getElementById('registerName').value, email = document.getElementById('registerEmail').value, password = document.getElementById('registerPassword').value, userType = document.getElementById('registerUserType').value; if (password.length < 6 || !userType) { showAlert('Revisa la contraseña y el tipo de usuario.', 'error'); return; } try { const cred = await createUserWithEmailAndPassword(auth, email, password); await updateProfile(cred.user, { displayName: name }); await setDoc(doc(db, "users", cred.user.uid), { name, email, userType, joinDate: Timestamp.now() }); closeAuthModal(); showAlert('¡Cuenta creada con éxito!', 'success'); } catch (error) { showAlert(getAuthErrorMessage(error.code), 'error'); } });
         document.getElementById('editUserForm').addEventListener('submit', async (e) => { e.preventDefault(); const userId = document.getElementById('editUserId').value; const updatedData = { name: document.getElementById('editUserName').value, userType: document.getElementById('editUserType').value }; try { await updateDoc(doc(db, "users", userId), updatedData); showAlert('Usuario actualizado', 'success'); document.getElementById('editUserModal').style.display = 'none'; renderUsersTable(); } catch (error) { showAlert('Error al actualizar', 'error'); } });
@@ -705,6 +714,7 @@ window.submitReply = async (schoolId, reviewId) => {
     </script>
 </body>
 </html>
+
 
 
 

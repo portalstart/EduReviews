@@ -231,6 +231,7 @@
 
         let currentUser = null, currentUserProfile = null, currentRating = 0, selectedSchool = null, unsubscribeSchools, searchTimeout;
         let activeCharts = {};
+        const replyListeners = {};
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -315,22 +316,21 @@
                     const schoolDoc = await t.get(schoolRef);
                     if (!schoolDoc.exists()) throw "El colegio no existe.";
                     const { totalReviews = 0, ratingSum = 0 } = schoolDoc.data();
-                    const newTotalReviews = totalReviews + 1;
-                    const newRatingSum = ratingSum + rating;
-                    t.update(schoolRef, { totalReviews: newTotalReviews, ratingSum: newRatingSum, avgRating: newRatingSum / newTotalReviews });
+                    t.update(schoolRef, { totalReviews: increment(1), ratingSum: increment(rating), avgRating: (ratingSum + rating) / (totalReviews + 1) });
                     const newReviewRef = doc(collection(db, `schools/${schoolId}/reviews`));
-                    t.set(newReviewRef, { authorId: currentUser.uid, authorName: document.getElementById('postAnonymous').checked ? 'Usuario Anónimo' : currentUser.displayName, authorType: currentUserProfile.userType, rating, comment, recommendStudy: document.getElementById('recommendStudy').checked, recommendWork: document.getElementById('recommendWork').checked, isAnonymous: document.getElementById('postAnonymous').checked, createdAt: Timestamp.now(), likes: 0, dislikes: 0, likedBy: [], dislikedBy: [] });
+                    t.set(newReviewRef, { authorId: currentUser.uid, authorName: document.getElementById('postAnonymous').checked ? 'Usuario Anónimo' : currentUser.displayName, authorType: currentUserProfile.userType, rating, comment, recommendStudy: document.getElementById('recommendStudy').checked, recommendWork: document.getElementById('recommendWork').checked, isAnonymous: document.getElementById('postAnonymous').checked, createdAt: Timestamp.now(), likes: 0, dislikes: 0, likedBy: [] });
                 });
                 showAlert('Reseña publicada con éxito.', 'success');
                 document.getElementById('reviewForm').reset();
                 currentRating = 0; document.querySelectorAll('.fb-star').forEach(s => s.classList.remove('active'));
-                clearSelectedSchool(null);
+                clearSelectedSchool();
             } catch (error) { console.error("Error al publicar:", error); showAlert('No se pudo publicar la reseña.', 'error'); }
         }
 
         function renderReviews(schoolId = null) {
             const listEl = document.getElementById('reviewsList');
             if (unsubscribeSchools) unsubscribeSchools();
+            Object.values(replyListeners).forEach(unsub => unsub());
             listEl.innerHTML = `<div class="fb-post" style="padding: 40px; text-align: center;">Cargando reseñas...</div>`;
 
             if (schoolId) {
@@ -352,18 +352,20 @@
         function renderSchoolPost(schoolId, schoolData) {
             const postEl = document.createElement('div');
             postEl.className = 'fb-post';
+            postEl.id = `post-${schoolId}`;
             postEl.innerHTML = `
                 <div class="fb-post-header"><div><h3>${schoolData.name}</h3><div class="fb-post-school-location"><i class="fas fa-map-marker-alt"></i> ${schoolData.location}</div></div><div class="fb-post-rating"><div class="fb-post-rating-number">${(schoolData.avgRating || 0).toFixed(1)}</div><div class="fb-post-rating-stars">${'★'.repeat(Math.round(schoolData.avgRating || 0))}${'☆'.repeat(5 - Math.round(schoolData.avgRating || 0))}</div></div></div>
                 <div class="fb-charts"><div class="fb-chart-box"><h4><i class="fas fa-chart-bar"></i> Calificaciones</h4><canvas id="ratingsChart-${schoolId}"></canvas></div><div class="fb-chart-box"><h4><i class="fas fa-thumbs-up"></i> Reacciones</h4><canvas id="likesChart-${schoolId}"></canvas></div></div>
                 <div class="fb-comments-section"><div id="comments-for-${schoolId}">Cargando...</div></div>`;
             const existingPost = document.getElementById(`post-${schoolId}`);
             if (existingPost) { existingPost.replaceWith(postEl); } 
-            else { postEl.id = `post-${schoolId}`; document.getElementById('reviewsList').appendChild(postEl); }
+            else { document.getElementById('reviewsList').appendChild(postEl); }
 
             const commentsContainer = document.getElementById(`comments-for-${schoolId}`);
             const reviewsQuery = query(collection(db, `schools/${schoolId}/reviews`), orderBy("createdAt", "desc"));
             onSnapshot(reviewsQuery, reviewsSnap => {
                 commentsContainer.innerHTML = reviewsSnap.empty ? '<p style="text-align:center;color:var(--text-secondary);">Sin opiniones para este colegio.</p>' : reviewsSnap.docs.map(reviewDoc => renderSingleReviewHTML(schoolId, reviewDoc.id, reviewDoc.data())).join('');
+                reviewsSnap.docs.forEach(reviewDoc => attachReplyListener(schoolId, reviewDoc.id));
                 createRatingsChart(schoolId, reviewsSnap.docs);
                 createLikesChart(schoolId, reviewsSnap.docs);
             });
@@ -388,6 +390,20 @@
                     </div>
                 </div>
                 </div></div></div>`;
+        }
+
+        function attachReplyListener(schoolId, reviewId) {
+            const repliesContainer = document.getElementById(`repliesContainer-${reviewId}`);
+            if (!repliesContainer) return;
+            const q = query(collection(db, `schools/${schoolId}/reviews/${reviewId}/replies`), orderBy('createdAt', 'asc'));
+            if (replyListeners[reviewId]) replyListeners[reviewId]();
+            replyListeners[reviewId] = onSnapshot(q, (snap) => {
+                repliesContainer.innerHTML = snap.docs.map(doc => renderSingleReplyHTML(doc.data())).join('');
+            });
+        }
+
+        function renderSingleReplyHTML(replyData) {
+            return `<div class="fb-reply"><div class="fb-reply-avatar">${replyData.authorName.charAt(0).toUpperCase()}</div><div class="fb-reply-content"><div class="fb-reply-bubble"><div class="fb-reply-author">${replyData.authorName}</div><p class="fb-reply-text">${replyData.text.replace(/\n/g, '<br>')}</p></div><div class="fb-reply-date">${replyData.createdAt.toDate().toLocaleDateString()}</div></div></div>`;
         }
         
         function createRatingsChart(schoolId, reviewDocs) {

@@ -460,14 +460,68 @@
             activeCharts[canvasId] = new Chart(ctx.getContext('2d'), { type: 'doughnut', data: { labels: ['Likes', 'Dislikes'], datasets: [{ data: [totalLikes > 0 ? totalLikes : 0.01, totalDislikes > 0 ? totalDislikes : 0.01], backgroundColor: ['#1877f2', '#dc3545'], borderWidth: 0 }] }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } });
         }
 
-        async function handleSearch(term) {
-            const dropdown = document.getElementById('searchDropdown');
-            if (term.length < 2) { dropdown.classList.remove('show'); return; }
-            const q = query(collection(db, "schools"), where("name", ">=", term.charAt(0).toUpperCase() + term.slice(1)), where("name", "<=", term.charAt(0).toUpperCase() + term.slice(1) + '\uf8ff'));
-            const snap = await getDocs(q);
-            dropdown.innerHTML = snap.empty ? `<div class="fb-search-no-results">No se encontraron colegios</div>` : snap.docs.map(doc => { const s = { id: doc.id, ...doc.data() }; return `<div class="fb-search-result" onclick='window.selectSchoolFromSearch(${JSON.stringify(s).replace(/'/g, "&#39;")})'><div class="fb-search-result-name">${s.name}</div><div class="fb-search-result-info">${s.location}</div></div>`; }).join('');
-            dropdown.classList.add('show');
+        // --- Buscar colegios por nombre (versión mejorada e insensible a mayúsculas) ---
+async function handleSearch(term) {
+    const dropdown = document.getElementById('searchDropdown');
+    if (!term || term.length < 2) {
+        dropdown.classList.remove('show');
+        dropdown.innerHTML = '';
+        return;
+    }
+
+    try {
+        // Normalizar texto (quita tildes, convierte a minúsculas)
+        const normalizeText = (txt) =>
+            txt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+        const termNormalized = normalizeText(term);
+        const termCapitalized = term.charAt(0).toUpperCase() + term.slice(1);
+
+        // Buscar por nombre (Firestore requiere orderBy + rango)
+        const q = query(
+            collection(db, "schools"),
+            orderBy("name"),
+            startAt(termCapitalized),
+            endAt(termCapitalized + '\uf8ff')
+        );
+
+        const snap = await getDocs(q);
+
+        // Filtrado adicional local (por insensibilidad a mayúsculas/tildes)
+        const results = snap.docs.filter(doc => {
+            const nameNorm = normalizeText(doc.data().name || '');
+            return nameNorm.includes(termNormalized);
+        });
+
+        if (results.length === 0) {
+            dropdown.innerHTML = `<div class="fb-search-no-results">No se encontraron colegios</div>`;
+        } else {
+            dropdown.innerHTML = results
+                .map(doc => {
+                    const s = { id: doc.id, ...doc.data() };
+                    return `
+                        <div class="fb-search-result"
+                             onclick='window.selectSchoolFromSearch(${JSON.stringify(s).replace(/'/g, "&#39;")})'>
+                            <div class="fb-search-result-header">
+                                <span class="fb-search-result-name">${s.name}</span>
+                                <span class="fb-search-result-rating">${(s.avgRating || 0).toFixed(1)} ★</span>
+                            </div>
+                            <div class="fb-search-result-info">
+                                <span><i class="fas fa-map-marker-alt"></i> ${s.location || ''}</span>
+                            </div>
+                        </div>`;
+                })
+                .join('');
         }
+
+        dropdown.classList.add('show');
+    } catch (error) {
+        console.error("Error en búsqueda:", error);
+        dropdown.innerHTML = `<div class="fb-search-no-results">Error al buscar colegios</div>`;
+        dropdown.classList.add('show');
+    }
+}
+
 
         window.logout = () => signOut(auth).catch(console.error);
         window.openAuthModal = () => document.getElementById('authModal').style.display = 'block';
@@ -598,6 +652,7 @@ window.submitReply = async (schoolId, reviewId) => {
     </script>
 </body>
 </html>
+
 
 
 

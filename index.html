@@ -475,7 +475,8 @@
         window.checkIfNewSchool = () => { clearTimeout(searchTimeout); searchTimeout = setTimeout(async () => { if(selectedSchool) return; const name = document.getElementById('schoolName').value.trim(); document.querySelector('.fb-school-info-box').classList.toggle('show', name.length > 2); }, 500); };
         window.selectSchoolFromSearch = (s) => { selectedSchool = s; document.getElementById('schoolName').value = s.name; document.getElementById('location').value = s.location; document.getElementById('schoolName').readOnly = true; document.getElementById('location').readOnly = true; const badge = document.getElementById('school-badge'); badge.innerHTML = `<span><i class="fas fa-check-circle"></i> ${s.name}</span><button type="button" onclick="window.clearSelectedSchool(event)">Cambiar</button>`; badge.classList.add('show'); document.getElementById('searchDropdown').classList.remove('show'); document.querySelector('.fb-school-info-box').classList.remove('show'); renderReviews(s.id); };
         window.clearSelectedSchool = (e, force = false) => { if(e) e.stopPropagation(); selectedSchool = null; document.getElementById('schoolName').value = ''; document.getElementById('location').value = ''; document.getElementById('schoolName').readOnly = false; document.getElementById('location').readOnly = false; document.getElementById('school-badge').classList.remove('show'); if (force) renderReviews(); };
-        window.toggleLike = async (schoolId, reviewId, isLike) => {
+       // --- Likes / Dislikes ---
+window.toggleLike = async (schoolId, reviewId, isLike) => {
     if (!currentUser) return showAlert('Debes iniciar sesión para votar.', 'error');
 
     const reviewRef = doc(db, `schools/${schoolId}/reviews/${reviewId}`);
@@ -495,34 +496,27 @@
             const hasLiked = likedBy.includes(uid);
             const hasDisliked = dislikedBy.includes(uid);
 
-            // Construimos objeto de updates según caso
             const updates = {};
 
             if (isLike) {
                 if (hasLiked) {
-                    // Quitar like (deshacer)
                     updates.likedBy = arrayRemove(uid);
                     updates.likes = increment(-1);
                 } else {
-                    // Agregar like
                     updates.likedBy = arrayUnion(uid);
                     updates.likes = increment(1);
-                    // Si tenía dislike, quitarlo
                     if (hasDisliked) {
                         updates.dislikedBy = arrayRemove(uid);
                         updates.dislikes = increment(-1);
                     }
                 }
-            } else { // is dislike
+            } else {
                 if (hasDisliked) {
-                    // Quitar dislike (deshacer)
                     updates.dislikedBy = arrayRemove(uid);
                     updates.dislikes = increment(-1);
                 } else {
-                    // Agregar dislike
                     updates.dislikedBy = arrayUnion(uid);
                     updates.dislikes = increment(1);
-                    // Si tenía like, quitarlo
                     if (hasLiked) {
                         updates.likedBy = arrayRemove(uid);
                         updates.likes = increment(-1);
@@ -530,7 +524,6 @@
                 }
             }
 
-            // Aplicar update solo si hay cambios
             if (Object.keys(updates).length > 0) {
                 t.update(reviewRef, updates);
             }
@@ -538,6 +531,50 @@
     } catch (err) {
         console.error("Error toggleLike:", err);
         showAlert('No se pudo procesar el voto. Intenta de nuevo.', 'error');
+    }
+};
+
+// --- Mostrar/ocultar formulario de respuesta ---
+window.toggleReplyForm = (reviewId) => {
+    const form = document.getElementById(`replyForm-${reviewId}`);
+    if (!form) return;
+    form.classList.toggle('show');
+    if (form.classList.contains('show')) {
+        const textarea = form.querySelector('textarea');
+        textarea.focus();
+    }
+};
+
+// --- Cancelar respuesta ---
+window.cancelReply = (reviewId) => {
+    const form = document.getElementById(`replyForm-${reviewId}`);
+    if (!form) return;
+    form.classList.remove('show');
+    const textarea = form.querySelector('textarea');
+    if (textarea) textarea.value = '';
+};
+
+// --- Enviar respuesta ---
+window.submitReply = async (schoolId, reviewId) => {
+    if (!currentUser) return showAlert('Inicia sesión para responder.', 'error');
+    const textarea = document.getElementById(`replyText-${reviewId}`);
+    const text = textarea ? textarea.value.trim() : '';
+    if (!text) return showAlert('Escribe una respuesta.', 'error');
+
+    const replyData = {
+        text,
+        authorId: currentUser.uid,
+        authorName: currentUser.displayName || 'Usuario',
+        createdAt: Timestamp.now()
+    };
+
+    try {
+        await addDoc(collection(db, `schools/${schoolId}/reviews/${reviewId}/replies`), replyData);
+        window.cancelReply(reviewId);
+        showAlert('Respuesta publicada con éxito.', 'success');
+    } catch (e) {
+        console.error("Error submitReply:", e);
+        showAlert('No se pudo enviar la respuesta.', 'error');
     }
 };
 
@@ -561,5 +598,6 @@
     </script>
 </body>
 </html>
+
 
 

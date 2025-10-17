@@ -371,26 +371,60 @@
             });
         }
 
-        function renderSingleReviewHTML(schoolId, reviewId, r) {
-            return `<div class="fb-comment ${r.isAnonymous ? 'anonymous' : ''}" id="review-${reviewId}"><div class="fb-comment-wrapper">
-                <div class="fb-comment-avatar ${r.isAnonymous ? 'anonymous' : ''}">${r.isAnonymous ? '<i class="fas fa-user-secret"></i>' : r.authorName.charAt(0).toUpperCase()}</div>
-                <div class="fb-comment-content"><div class="fb-comment-bubble"><div class="fb-comment-header"><span class="fb-comment-author">${r.authorName}</span><span class="fb-comment-badge ${r.isAnonymous ? 'anonymous' : r.authorType}">${r.isAnonymous ? 'Anónimo' : r.authorType}</span></div><div class="fb-comment-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</div><p class="fb-comment-text">${r.comment.replace(/\n/g, '<br>')}</p>${r.recommendStudy || r.recommendWork ? `<div class="fb-comment-recommend">${r.recommendStudy ? '<i class="fas fa-check"></i> Recomienda estudiar ' : ''}${r.recommendWork ? '<i class="fas fa-check"></i> Recomienda trabajar' : ''}</div>` : ''}</div>
+     function renderSingleReviewHTML(schoolId, reviewId, r) {
+    return `
+    <div class="fb-comment ${r.isAnonymous ? 'anonymous' : ''}" id="review-${reviewId}">
+        <div class="fb-comment-wrapper">
+            <div class="fb-comment-avatar ${r.isAnonymous ? 'anonymous' : ''}">
+                ${r.isAnonymous ? '<i class="fas fa-user-secret"></i>' : (r.authorName ? r.authorName.charAt(0).toUpperCase() : '?')}
+            </div>
+            <div class="fb-comment-content">
+                <div class="fb-comment-bubble">
+                    <div class="fb-comment-header">
+                        <span class="fb-comment-author">${r.authorName || 'Usuario'}</span>
+                        <span class="fb-comment-badge ${r.isAnonymous ? 'anonymous' : (r.authorType || 'parent')}">
+                            ${r.isAnonymous ? 'Anónimo' : (r.authorType || '')}
+                        </span>
+                    </div>
+                    <div class="fb-comment-stars">${'★'.repeat(r.rating || 0)}${'☆'.repeat(5 - (r.rating || 0))}</div>
+                    <p class="fb-comment-text">${(r.comment || '').replace(/\n/g, '<br>')}</p>
+                    ${r.recommendStudy || r.recommendWork ? `
+                        <div class="fb-comment-recommend">
+                            ${r.recommendStudy ? '<i class="fas fa-check"></i> Recomienda estudiar ' : ''}
+                            ${r.recommendWork ? '<i class="fas fa-check"></i> Recomienda trabajar' : ''}
+                        </div>` : ''}
+                </div>
                 <div class="fb-comment-meta">
-                    <span class="fb-comment-date"><i class="far fa-clock"></i> ${r.createdAt.toDate().toLocaleDateString()}</span>
-                    <span class="fb-comment-action ${currentUser && r.likedBy.includes(currentUser.uid) ? 'liked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', true)"><i class="fas fa-thumbs-up"></i> ${r.likes || 'Me gusta'}</span>
-                    <span class="fb-comment-action ${currentUser && r.dislikedBy.includes(currentUser.uid) ? 'disliked' : ''}" onclick="window.toggleLike('${schoolId}','${reviewId}', false)"><i class="fas fa-thumbs-down"></i> ${r.dislikes || ''}</span>
-                    <span class="fb-comment-action" onclick="window.toggleReplyForm('${reviewId}')"><i class="fas fa-reply"></i> Responder</span>
+                    <span class="fb-comment-date">
+                        <i class="far fa-clock"></i> ${r.createdAt && r.createdAt.toDate ? r.createdAt.toDate().toLocaleDateString() : ''}
+                    </span>
+                    <span class="fb-comment-action ${currentUser && Array.isArray(r.likedBy) && r.likedBy.includes(currentUser.uid) ? 'liked' : ''}"
+                          onclick="window.toggleLike('${schoolId}','${reviewId}', true)">
+                        <i class="fas fa-thumbs-up"></i> ${r.likes || 'Me gusta'}
+                    </span>
+                    <span class="fb-comment-action ${currentUser && Array.isArray(r.dislikedBy) && r.dislikedBy.includes(currentUser.uid) ? 'disliked' : ''}"
+                          onclick="window.toggleLike('${schoolId}','${reviewId}', false)">
+                        <i class="fas fa-thumbs-down"></i> ${r.dislikes || ''}
+                    </span>
+                    <span class="fb-comment-action" onclick="window.toggleReplyForm('${reviewId}')">
+                        <i class="fas fa-reply"></i> Responder
+                    </span>
                 </div>
                 <div class="fb-replies" id="repliesContainer-${reviewId}"></div>
                 <div class="fb-reply-form" id="replyForm-${reviewId}">
                     <textarea id="replyText-${reviewId}" placeholder="Escribe una respuesta..."></textarea>
                     <div class="fb-reply-form-buttons">
                         <button class="fb-btn-small secondary" onclick="window.cancelReply('${reviewId}')">Cancelar</button>
-                        <button class="fb-btn-small primary" onclick="window.submitReply('${schoolId}', '${reviewId}')"><i class="fas fa-paper-plane"></i> Enviar</button>
+                        <button class="fb-btn-small primary" onclick="window.submitReply('${schoolId}', '${reviewId}')">
+                            <i class="fas fa-paper-plane"></i> Enviar
+                        </button>
                     </div>
                 </div>
-                </div></div></div>`;
-        }
+            </div>
+        </div>
+    </div>`;
+}
+
 
         function attachReplyListener(schoolId, reviewId) {
             const repliesContainer = document.getElementById(`repliesContainer-${reviewId}`);
@@ -484,3 +518,4 @@
     </script>
 </body>
 </html>
+

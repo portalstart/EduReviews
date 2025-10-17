@@ -672,9 +672,18 @@ window.submitReply = async (schoolId, reviewId) => {
         document.querySelectorAll('.fb-modal-close').forEach(btn => { btn.onclick = function() { this.closest('.fb-modal').style.display = 'none'; document.body.style.overflow = 'auto'; } });
         const showAlert = (message, type) => { const el = document.createElement('div'); el.className = `fb-alert ${type}`; el.innerHTML = `<i class="fas fa-${type === 'success' ? 'check' : 'times'}-circle"></i><span>${message}</span>`; document.body.appendChild(el); setTimeout(() => el.remove(), 3000); };
         const getAuthErrorMessage = code => ({'auth/user-not-found': 'Email/contraseña incorrectos.', 'auth/wrong-password': 'Email/contraseña incorrectos.','auth/email-already-in-use': 'Email ya registrado.','auth/weak-password': 'Contraseña débil.'})[code] || 'Error inesperado.';
+           // --- Mostrar todos los colegios desde la búsqueda ---
+                window.showAllSchools = () => {
+                    const dropdown = document.getElementById('searchDropdown');
+                    dropdown.classList.remove('show');
+                    dropdown.innerHTML = '';
+                    renderReviews(); // 🔹 vuelve a cargar todas las reseñas/colegios
+                };
+
     </script>
 </body>
 </html>
+
 
 
 
